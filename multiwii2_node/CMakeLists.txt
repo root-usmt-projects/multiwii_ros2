@@ -31,6 +31,8 @@ include_directories(${msp_INCLUDE_DIRS})
 link_directories(${msp_LIBRARY_DIRS})
 
 include_directories(include)
+include_directories(/home/user/msp/inc)
+link_directories(/home/user/msp/build)
 
 add_library(MultiWiiNode SHARED src/MultiWiiNode.cpp)
 ament_target_dependencies(MultiWiiNode

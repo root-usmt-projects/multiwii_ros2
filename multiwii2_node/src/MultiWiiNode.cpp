@@ -2,6 +2,7 @@
 #include <class_loader/register_macro.hpp>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp> // Ensure this is included
 
 using namespace std::chrono_literals;
 
@@ -11,7 +12,7 @@ static const std::set<std::string> sub_params = {
 
 MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
 {
-    declare_parameter("device_path", "/dev/ttyUSB0");
+    declare_parameter("device_path", "/dev/ttyACM0");
     declare_parameter("baud", 115200);
 
     for(const std::string& sub_param : sub_params) {
@@ -25,6 +26,9 @@ MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
 
     fcu = std::make_unique<fcu::FlightController>();
     fcu->connect(device_path, baud);
+
+    // Initialize the raw attitude publisher
+    pub_attitude_raw = create_publisher<geometry_msgs::msg::Vector3Stamped>("attitude/raw", rclcpp::SensorDataQoS());
 
     pub_imu_raw = create_publisher<sensor_msgs::msg::Imu>("imu/data_raw", rclcpp::SensorDataQoS());
     pub_imu_mag = create_publisher<sensor_msgs::msg::MagneticField>("imu/mag", rclcpp::SensorDataQoS());
@@ -44,18 +48,18 @@ MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
                 "rc/override/raw", rclcpp::SystemDefaultsQoS(),
                 std::bind(&MultiWiiNode::rc_override_raw, this, std::placeholders::_1));
 
-    timer_state = create_wall_timer(100ms, std::bind(&MultiWiiNode::onState, this));
+    timer_state = create_wall_timer(50ms, std::bind(&MultiWiiNode::onState, this));
 
     // subscribe with default period
-    set_parameter({"sub/imu", 0.01});       // 102
-    set_parameter({"sub/motor", 0.1});      // 104
-    set_parameter({"sub/rc", 0.1});         // 105
-    set_parameter({"sub/attitude", 0.1});   // 108
-    set_parameter({"sub/altitude", 0.1});   // 109
-    set_parameter({"sub/analog", 0.1});     // 110
-    set_parameter({"sub/voltage", 1});      // 128
-    set_parameter({"sub/current", 1});      // 129
-    set_parameter({"sub/battery", 1});      // 130
+    set_parameter({"sub/imu", 6000000000.0});       // 102
+    set_parameter({"sub/motor", 5000000000.0});     // 104
+    set_parameter({"sub/rc", 0.05});                // 105
+    set_parameter({"sub/attitude", 0.034});         // 108
+    set_parameter({"sub/altitude", 3.0});           // 109
+    set_parameter({"sub/analog", 1000000000.0});    // 110
+    set_parameter({"sub/voltage", 2000000000.0});   // 128
+    set_parameter({"sub/current", 3000000000.0});   // 129
+    set_parameter({"sub/battery", 4000000000.0});   // 130
 }
 
 bool MultiWiiNode::subscribe(const std::string &topic, const double period) {
@@ -89,19 +93,17 @@ rcl_interfaces::msg::SetParametersResult MultiWiiNode::onParameterChange(const s
     for (const auto & parameter : parameters) {
         const std::string name = parameter.get_name();
         static const std::string prefix = "sub/";
-        const std::string sub_name = name.substr(prefix.length(), name.length());
-        if (name.substr(0, prefix.length()) == prefix &&
-            sub_params.count(sub_name) &&
-            parameter.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE)
-        {
-            if(!subscribe(sub_name, parameter.as_double())) {
+        if (name.rfind(prefix, 0) == 0) {
+            const std::string sub_name = name.substr(prefix.size());
+            if (sub_params.count(sub_name) && parameter.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE) {
+                if(!subscribe(sub_name, parameter.as_double())) {
+                    result.successful = false;
+                    result.reason = "unknown subscriber";
+                }
+            } else {
                 result.successful = false;
-                result.reason = "unknown subscriber";
+                result.reason = "unknown or invalid parameter";
             }
-        }
-        else {
-            result.successful = false;
-            result.reason = "unknown or invalid parameter";
         }
     }
     return result;
@@ -138,7 +140,7 @@ void MultiWiiNode::onAttitude(const msp::msg::Attitude &attitude) {
     // r,p,y to rotation matrix
     Eigen::Matrix3f rot;
     rot = Eigen::AngleAxisf(deg2rad(attitude.roll), Eigen::Vector3f::UnitX())
-        * Eigen::AngleAxisf(deg2rad(attitude.pitch),  Eigen::Vector3f::UnitY())
+        * Eigen::AngleAxisf(deg2rad(attitude.pitch), Eigen::Vector3f::UnitY())
         * Eigen::AngleAxisf(deg2rad(attitude.yaw), Eigen::Vector3f::UnitZ());
 
     const Eigen::Quaternionf quat(rot);
@@ -158,6 +160,16 @@ void MultiWiiNode::onAttitude(const msp::msg::Attitude &attitude) {
     tf_broadcaster.sendTransform(tf);
 
     pub_pose->publish(pose_stamped);
+
+    // Publish raw attitude values (roll, pitch, yaw) directly
+    geometry_msgs::msg::Vector3Stamped raw_att_msg;
+    raw_att_msg.header.stamp = clk.now();
+    raw_att_msg.header.frame_id = "multiwii";
+    raw_att_msg.vector.x = attitude.roll;
+    raw_att_msg.vector.y = attitude.pitch;
+    raw_att_msg.vector.z = attitude.yaw;
+
+    pub_attitude_raw->publish(raw_att_msg);
 }
 
 void MultiWiiNode::onRc(const msp::msg::Rc &rc) {
@@ -190,7 +202,7 @@ void MultiWiiNode::onAnalog(const msp::msg::Analog &analog) {
 }
 
 void MultiWiiNode::onAltitude(const msp::msg::Altitude &altitude) {
-    std_msgs::msg::Float64 alt; // altitude in meter
+    std_msgs::msg::Float64 alt; // altitude in meters
     alt.data = altitude.altitude;
 
     geometry_msgs::msg::TransformStamped tf;
@@ -204,17 +216,14 @@ void MultiWiiNode::onAltitude(const msp::msg::Altitude &altitude) {
 }
 
 void MultiWiiNode::onVoltage(const msp::msg::VoltageMeters &voltage_meters) {
-//    std::cout << voltage_meters << std::endl;
     (void)voltage_meters;
 }
 
 void MultiWiiNode::onCurrent(const msp::msg::CurrentMeters &current_meters) {
-//    std::cout << current_meters << std::endl;
     (void)current_meters;
 }
 
 void MultiWiiNode::onBattery(const msp::msg::BatteryState &battery_state) {
-//    std::cout << battery_state << std::endl;
     (void)battery_state;
 }
 
@@ -225,17 +234,14 @@ void MultiWiiNode::onState() {
 }
 
 void MultiWiiNode::rc_override_AERT1234(const mavros_msgs::msg::OverrideRCIn::SharedPtr rc) {
-    // set channels in order of
-    // AERT (Aileron, Elevator, Rudder, Throttle), or
-    // RPYT (Roll, Pitch, Yaw, Throttle) respectively
     fcu->setRc(rc->channels[0], rc->channels[1], rc->channels[2], rc->channels[3],
                rc->channels[4], rc->channels[5], rc->channels[6], rc->channels[7]);
 }
 
 void MultiWiiNode::rc_override_raw(const mavros_msgs::msg::OverrideRCIn::SharedPtr rc) {
-    std::vector<uint16_t> channels;
-    for(const uint16_t c : rc->channels) { channels.push_back(c); }
+    std::vector<uint16_t> channels(rc->channels.begin(), rc->channels.end());
     fcu->setRc(channels);
 }
 
 CLASS_LOADER_REGISTER_CLASS(MultiWiiNode, rclcpp::Node)
+

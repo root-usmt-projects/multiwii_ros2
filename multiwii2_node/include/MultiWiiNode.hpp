@@ -15,6 +15,7 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -49,6 +50,9 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_altitude;
     rclcpp::Publisher<mavros_msgs::msg::State>::SharedPtr pub_state;
 
+    // New publisher for raw attitude values
+    rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr pub_attitude_raw;
+
     rclcpp::Subscription<mavros_msgs::msg::OverrideRCIn>::SharedPtr sub_rc_in;
     rclcpp::Subscription<mavros_msgs::msg::OverrideRCIn>::SharedPtr sub_rc_in_raw;
 
@@ -71,28 +75,19 @@ private:
     bool subscribe(const std::string &topic, const double period);
 
     void onImu(const msp::msg::RawImu &imu);
-
     void onAttitude(const msp::msg::Attitude &attitude);
-
     void onRc(const msp::msg::Rc &rc);
-
     void onMotor(const msp::msg::Motor &motor);
-
     void onAnalog(const msp::msg::Analog &analog);
-
     void onAltitude(const msp::msg::Altitude &altitude);
-
     void onVoltage(const msp::msg::VoltageMeters &voltage_meters);
-
     void onCurrent(const msp::msg::CurrentMeters &current_meters);
-
     void onBattery(const msp::msg::BatteryState &battery_state);
-
     void onState();
 
     void rc_override_AERT1234(const mavros_msgs::msg::OverrideRCIn::SharedPtr rc);
-
     void rc_override_raw(const mavros_msgs::msg::OverrideRCIn::SharedPtr rc);
 };
 
 #endif // MULTIWIINODE_HPP
+
