@@ -57,7 +57,7 @@ MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
     set_parameter({"sub/rc", 0.05});                // 105
     set_parameter({"sub/attitude", 0.034});         // 108
     set_parameter({"sub/altitude", 3.0});           // 109
-    set_parameter({"sub/analog", 0.05});            // 110
+    set_parameter({"sub/analog", 0.2});             // 110
     set_parameter({"sub/voltage", 2000000000.0});   // 128
     set_parameter({"sub/current", 3000000000.0});   // 129
     set_parameter({"sub/battery", 4000000000.0});   // 130
