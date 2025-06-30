@@ -47,6 +47,7 @@ private:
     rclcpp::Publisher<mavros_msgs::msg::RCIn>::SharedPtr pub_rc_in;
     rclcpp::Publisher<mavros_msgs::msg::RCOut>::SharedPtr pub_motors;
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr pub_battery;
+    rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr pub_rssi;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_altitude;
     rclcpp::Publisher<mavros_msgs::msg::State>::SharedPtr pub_state;
 

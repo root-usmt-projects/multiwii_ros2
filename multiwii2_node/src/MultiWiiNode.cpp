@@ -12,7 +12,7 @@ static const std::set<std::string> sub_params = {
 
 MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
 {
-    declare_parameter("device_path", "/dev/ttyACM0");
+    declare_parameter("device_path", "/dev/ttyAMA0");
     declare_parameter("baud", 115200);
 
     for(const std::string& sub_param : sub_params) {
@@ -36,6 +36,7 @@ MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
     pub_rc_in = create_publisher<mavros_msgs::msg::RCIn>("rc/in", rclcpp::SensorDataQoS());
     pub_motors = create_publisher<mavros_msgs::msg::RCOut>("motors", rclcpp::SensorDataQoS());
     pub_battery = create_publisher<sensor_msgs::msg::BatteryState>("battery", rclcpp::SensorDataQoS());
+    pub_rssi = create_publisher<std_msgs::msg::UInt16>("rssi", rclcpp::SensorDataQoS());
     pub_altitude = create_publisher<std_msgs::msg::Float64>("global_position/rel_alt", rclcpp::SensorDataQoS());
     pub_state = create_publisher<mavros_msgs::msg::State>("state", rclcpp::SensorDataQoS());
 
@@ -56,7 +57,7 @@ MultiWiiNode::MultiWiiNode() : Node("multiwii"), tf_broadcaster(this)
     set_parameter({"sub/rc", 0.05});                // 105
     set_parameter({"sub/attitude", 0.034});         // 108
     set_parameter({"sub/altitude", 3.0});           // 109
-    set_parameter({"sub/analog", 1000000000.0});    // 110
+    set_parameter({"sub/analog", 0.2});             // 110
     set_parameter({"sub/voltage", 2000000000.0});   // 128
     set_parameter({"sub/current", 3000000000.0});   // 129
     set_parameter({"sub/battery", 4000000000.0});   // 130
@@ -199,6 +200,11 @@ void MultiWiiNode::onAnalog(const msp::msg::Analog &analog) {
     battery.current = analog.amperage;
 
     pub_battery->publish(battery);
+
+    std_msgs::msg::UInt16 rssi_level;
+    rssi_level.data = static_cast<uint16_t>(analog.rssi); // range: [0;1023]
+
+    pub_rssi->publish(rssi_level);
 }
 
 void MultiWiiNode::onAltitude(const msp::msg::Altitude &altitude) {
